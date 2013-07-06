@@ -24,8 +24,11 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var restler = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
+var URLFILE_DEFAULT = "http://google.com/index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -36,15 +39,33 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
+var assertUrl = function(infile) {
+    var instr = infile.toString();
+    restler.get(instr).on('complete', function(result) {
+      if (result instanceof Error) {
+        sys.puts('Error: ' + result.message);
+        this.retry(5000); // try again after 5 sec
+      } else {
+        console.log("received...");
+      }
+    });
+    return instr;
+};
+
+
 var cheerioHtmlFile = function(htmlfile) {
     return cheerio.load(fs.readFileSync(htmlfile));
 };
+
+
+//console.log(restlerUrlFile("http://bing.com"));
 
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
 var checkHtmlFile = function(htmlfile, checksfile) {
+    console.log(htmlfile);
     $ = cheerioHtmlFile(htmlfile);
     var checks = loadChecks(checksfile).sort();
     var out = {};
@@ -54,6 +75,49 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     }
     return out;
 };
+
+var checkUrlFile = function(urlFile, checksfile){
+
+   var content;
+   restler.get(urlFile).on('complete', function(result) {
+    if (result instanceof Error) {
+     
+
+    } else {
+      //console.log(result);
+      content = result;
+      //return result;
+      //console.log(result);
+      //return result;
+
+      $ = cheerio.load(result);
+      var checks = loadChecks(checksfile).sort();
+      var out = {};
+      for(var ii in checks) {
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;
+    }
+    var outJson = JSON.stringify(out, null, 4);
+
+    console.log(outJson);
+    return out;
+
+  }
+  })
+  .on('error', function(result) {
+
+        console.log('Error: ' + result.message + ' Exiting');
+        process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
+
+  });
+
+return content;
+
+
+};
+
+
+
 
 var clone = function(fn) {
     // Workaround for commander.js issue.
@@ -65,10 +129,25 @@ if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url_file>', 'url to index.html')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+
+    if (program.url){
+
+      var checkJson = checkUrlFile(program.url, program.checks);     
+
+    }
+    else if(program.file){
+      console.log("file");
+      var checkJson = checkHtmlFile(program.file, program.checks);
+      var outJson = JSON.stringify(checkJson, null, 4);
+      console.log(outJson);
+
+    }else{
+
+      console.log("fuck");
+    }
+
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
